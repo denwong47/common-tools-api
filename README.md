@@ -24,12 +24,9 @@ because requests are made through `reqwest`:
 
 ```toml
 [dependencies]
-keycdn-api = { git = "https://github.com/denwong47/common-tools-api", features = ["provider-geoapify"] }
+common-tools-api = { git = "https://github.com/denwong47/common-tools-api", features = ["provider-geoapify"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
-
-The package is still named `keycdn-api` from when it only supported KeyCDN,
-so you import it as `keycdn_api`.
 
 ### Features
 
@@ -47,10 +44,10 @@ so you import it as `keycdn_api`.
 ### KeyCDN: IP Location Finder
 
 ```rust
-use keycdn_api::providers::keycdn::Session;
+use common_tools_api::providers::keycdn::Session;
 
 #[tokio::main]
-async fn main() -> keycdn_api::Result<()> {
+async fn main() -> common_tools_api::Result<()> {
     let session = Session::new("https://www.example.com")?;
 
     let location = session.location_lookup("8.8.8.8").await?;
@@ -75,11 +72,11 @@ KeyCDN does not document which fields can be `null`, so every field apart from
 ### Geoapify: Reverse Geocoding
 
 ```rust
-use keycdn_api::providers::geoapify::{ReverseGeocodingQuery, Session};
-use keycdn_api::providers::geoapify::models::reverse_geocoding::LocationType;
+use common_tools_api::providers::geoapify::{ReverseGeocodingQuery, Session};
+use common_tools_api::providers::geoapify::models::reverse_geocoding::LocationType;
 
 #[tokio::main]
-async fn main() -> keycdn_api::Result<()> {
+async fn main() -> common_tools_api::Result<()> {
     let session = Session::new(std::env::var("GEOAPIFY_API_KEY").unwrap())?;
 
     // The place nearest to the coordinates.
@@ -145,7 +142,7 @@ creating several:
 
 ```rust
 use std::sync::Arc;
-use keycdn_api::providers::keycdn::Session;
+use common_tools_api::providers::keycdn::Session;
 
 let session = Arc::new(Session::new("https://www.example.com")?);
 
@@ -170,8 +167,8 @@ To use a different limit, for example on a paid Geoapify plan, pass a
 
 ```rust
 use std::num::NonZeroU32;
-use keycdn_api::models::rate_limit::RateLimit;
-use keycdn_api::providers::geoapify::Session;
+use common_tools_api::models::rate_limit::RateLimit;
+use common_tools_api::providers::geoapify::Session;
 
 let session = Session::new_with_rate_limit(
     api_key,
@@ -201,13 +198,13 @@ from the provider's field names and serialize to `camelCase`, leaving out
 The keys in `GeocodingResult::other` are left as Geoapify returns them.
 
 Query types only implement `Serialize`. They are turned into query parameters
-by the `CanExportQuery` trait in `keycdn_api::traits::query`. Arrays become
+by the `CanExportQuery` trait in `common_tools_api::traits::query`. Arrays become
 repeated parameters, and `None` fields are left out.
 
 ## Errors
 
-Every function returns `keycdn_api::Result<T>`. The error type is
-`keycdn_api::Error`:
+Every function returns `common_tools_api::Result<T>`. The error type is
+`common_tools_api::Error`:
 
 | Variant              | Cause                                                                  |
 | -------------------- | ---------------------------------------------------------------------- |
@@ -222,6 +219,13 @@ Every function returns `keycdn_api::Result<T>`. The error type is
 | `Json`               | The response body was not the expected JSON.                           |
 | `Api`                | KeyCDN reported an error, e.g. `"Hostname or IP is not valid."`        |
 | `MissingData`        | KeyCDN reported success but returned no data.                          |
+
+Every variant except `InvalidQueryValue` has a `provider` field, the name of
+the provider whose session raised it (`"keycdn"` or `"geoapify"`). Messages
+start with it, e.g. `[geoapify] unexpected response: status=401, ...`.
+`Error::provider()` returns it without matching on the variant, or `None` for
+`InvalidQueryValue`, which is raised while converting a query, before any
+session is involved.
 
 `Error` is `#[non_exhaustive]`, so `match` statements on it need a wildcard
 arm.

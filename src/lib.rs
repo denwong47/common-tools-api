@@ -1,7 +1,16 @@
-//! A library for interacting with the KeyCDN API.
+//! Small async clients for third-party web APIs, one module per provider.
 //!
-//! Currently only supports the
-//! [IP Location Finder API](https://tools.keycdn.com/geo#ip-location-finder-api).
+//! Each provider is behind its own Cargo feature, and lives in
+//! [`providers`]:
+//!
+//! - `provider-keycdn`: `providers::keycdn`, for KeyCDN's
+//!   [IP Location Finder API](https://tools.keycdn.com/geo#ip-location-finder-api).
+//! - `provider-geoapify`: `providers::geoapify`, for Geoapify's
+//!   [Reverse Geocoding API](https://apidocs.geoapify.com/docs/geocoding/reverse-geocoding/).
+//!
+//! Every provider has a `Session`, which rate limits its own requests to stay
+//! within that provider's limits. Shared types are in [`models`] and
+//! [`traits`], and every function returns this crate's [`Result`].
 
 pub mod error;
 pub mod models;

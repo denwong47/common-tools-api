@@ -23,6 +23,7 @@ use std::net::IpAddr;
 use super::super as keycdn;
 
 use crate::error::Error;
+use crate::models::provider::Provider;
 
 /// The `status` value KeyCDN uses for successful responses.
 const STATUS_SUCCESS: &str = "success";
@@ -55,6 +56,7 @@ impl TryFrom<LocationLookupResponse> for LocationLookupResult {
         if response.status != STATUS_SUCCESS {
             // e.g. {'status': 'error', 'description': 'Hostname or IP is not valid.'}
             return Err(Error::Api {
+                provider: keycdn::Session::name(),
                 status: response.status,
                 description: response.description,
             });
@@ -63,6 +65,7 @@ impl TryFrom<LocationLookupResponse> for LocationLookupResult {
             .data
             .map(|data| data.geo)
             .ok_or(Error::MissingData {
+                provider: keycdn::Session::name(),
                 description: response.description,
             })
     }
@@ -144,11 +147,14 @@ impl keycdn::Session {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ForProvider;
     #[cfg(feature = "test-integration")]
     use std::net::{IpAddr, Ipv4Addr};
 
     fn parse(json: &str) -> Result<LocationLookupResult, Error> {
-        serde_json::from_str::<LocationLookupResponse>(json)?.try_into()
+        serde_json::from_str::<LocationLookupResponse>(json)
+            .for_provider::<keycdn::Session>()?
+            .try_into()
     }
 
     /// A real response captured from the API on 2026-11-21, with `null`s.
@@ -237,9 +243,11 @@ mod tests {
 
         match parse(json) {
             Err(Error::Api {
+                provider,
                 status,
                 description,
             }) => {
+                assert_eq!(provider, "keycdn");
                 assert_eq!(status, "error");
                 assert_eq!(description, "Invalid host.");
             }
@@ -256,7 +264,13 @@ mod tests {
 
     #[test]
     fn malformed_body_is_json_error() {
-        assert!(matches!(parse("<html>"), Err(Error::Json(_))));
+        assert!(matches!(
+            parse("<html>"),
+            Err(Error::Json {
+                provider: "keycdn",
+                ..
+            })
+        ));
     }
 
     macro_rules! create_integration_test {

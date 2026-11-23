@@ -9,7 +9,7 @@ use tokio::time::Duration;
 use url::Url;
 
 use crate::{
-    error,
+    error::{self, ForProvider},
     models::{
         provider::Provider,
         rate_limit::{RateLimit, RateLimiter},
@@ -71,12 +71,15 @@ impl Session {
 
     /// Creates a new session with the given site ID and default headers.
     pub fn new_with_rate_limit(site: &str, rate_limit: RateLimit) -> error::Result<Self> {
-        let url = Url::parse(site).map_err(|_| error::Error::InvalidSiteId(site.to_string()))?;
+        let url = Url::parse(site).map_err(|_| error::Error::InvalidSiteId {
+            provider: Self::name(),
+            site: site.to_string(),
+        })?;
 
         let mut headers = HeaderMap::new();
         headers.insert(
             USER_AGENT,
-            HeaderValue::from_str(&format!("keycdn-tools:{site}"))?,
+            HeaderValue::from_str(&format!("keycdn-tools:{site}")).for_provider::<Self>()?,
         );
         Ok(Self {
             url,
@@ -101,13 +104,17 @@ impl Session {
     pub fn set_url(&mut self, url: Url) -> error::Result<()> {
         // Validate that the URL has a host and is either HTTP or HTTPS.
         if !url.has_host() || !matches!(url.scheme(), "http" | "https") {
-            return Err(error::Error::InvalidSiteId(url.to_string()));
+            return Err(error::Error::InvalidSiteId {
+                provider: Self::name(),
+                site: url.to_string(),
+            });
         }
 
         self.url = url;
         self.headers.insert(
             USER_AGENT,
-            HeaderValue::from_str(&format!("keycdn-tools:{url}", url = self.url.as_str()))?,
+            HeaderValue::from_str(&format!("keycdn-tools:{url}", url = self.url.as_str()))
+                .for_provider::<Self>()?,
         );
 
         // Drop the existing client if it exists, so that a new one will be
@@ -123,8 +130,8 @@ impl Session {
 
     /// Build the full endpoint URL by joining the base URL with the provided endpoint path.
     pub fn endpoint(endpoint: &str) -> error::Result<Url> {
-        let base_url = Url::parse(Self::BASE_URL)?;
-        base_url.join(endpoint).map_err(error::Error::from)
+        let base_url = Url::parse(Self::BASE_URL).for_provider::<Self>()?;
+        base_url.join(endpoint).for_provider::<Self>()
     }
 
     /// Returns a reference to the session's internal
@@ -145,7 +152,7 @@ impl Session {
                 #[cfg(all(feature = "native-tls", not(feature = "rustls")))]
                 let builder = builder.use_native_tls();
 
-                Ok(builder.build()?)
+                builder.build().for_provider::<Self>()
             })
             .await
     }
@@ -177,8 +184,9 @@ impl Session {
             // Reject requests with a body for GET or HEAD methods, as they should not have a body.
             if [reqwest::Method::GET, reqwest::Method::HEAD].contains(&method) {
                 return Err(error::Error::InvalidRequest {
+                    provider: Self::name(),
                     method,
-                    url,
+                    url: Box::new(url),
                     body: !body.is_null(), // always true
                 });
             }
@@ -187,15 +195,16 @@ impl Session {
 
         self.rate_limiter
             .acquire_and_execute(async move {
-                let response = builder.send().await?;
+                let response = builder.send().await.for_provider::<Self>()?;
 
                 if response.status().is_success() {
-                    let bytes = response.bytes().await?;
-                    serde_json::from_slice::<T>(&bytes).map_err(error::Error::from)
+                    let bytes = response.bytes().await.for_provider::<Self>()?;
+                    serde_json::from_slice::<T>(&bytes).for_provider::<Self>()
                 } else {
                     // This assumes that a failure will still return some sort of response text body;
                     // if the API returns an octat-stream or binary response, this will fail.
                     Err(error::Error::UnexpectedResponse {
+                        provider: Self::name(),
                         status: response.status(),
                         body: response.text().await.unwrap_or_else(|err| {
                             format!("Failed to read response body due to: {}", err)

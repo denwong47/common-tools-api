@@ -3,7 +3,7 @@
 //! session-specific settings like [`RateLimiter`] information.
 
 use crate::{
-    error,
+    error::{self, ForProvider},
     models::{
         provider::Provider,
         rate_limit::{RateLimit, RateLimiter},
@@ -91,10 +91,15 @@ impl Session {
     fn api_key_header_value(api_key: impl ToString) -> error::Result<HeaderValue> {
         let api_key = api_key.to_string();
         if api_key.is_empty() {
-            return Err(error::Error::InvalidApiKey);
+            return Err(error::Error::InvalidApiKey {
+                provider: Self::name(),
+            });
         }
 
-        let mut value = HeaderValue::from_str(&api_key).map_err(|_| error::Error::InvalidApiKey)?;
+        let mut value =
+            HeaderValue::from_str(&api_key).map_err(|_| error::Error::InvalidApiKey {
+                provider: Self::name(),
+            })?;
         value.set_sensitive(true);
         Ok(value)
     }
@@ -109,8 +114,8 @@ impl Session {
     /// The path must be relative, e.g. `"geocode/reverse"`. A leading `/`
     /// would replace the base URL's `/v1/` path.
     pub fn endpoint(endpoint: &str) -> error::Result<Url> {
-        let base_url = Url::parse(Self::BASE_URL)?;
-        base_url.join(endpoint).map_err(error::Error::from)
+        let base_url = Url::parse(Self::BASE_URL).for_provider::<Self>()?;
+        base_url.join(endpoint).for_provider::<Self>()
     }
 
     /// Returns a reference to the session's internal
@@ -131,7 +136,7 @@ impl Session {
                 #[cfg(all(feature = "native-tls", not(feature = "rustls")))]
                 let builder = builder.use_native_tls();
 
-                Ok(builder.build()?)
+                builder.build().for_provider::<Self>()
             })
             .await
     }
@@ -163,8 +168,9 @@ impl Session {
             // Reject requests with a body for GET or HEAD methods, as they should not have a body.
             if [reqwest::Method::GET, reqwest::Method::HEAD].contains(&method) {
                 return Err(error::Error::InvalidRequest {
+                    provider: Self::name(),
                     method,
-                    url,
+                    url: Box::new(url),
                     body: !body.is_null(), // always true
                 });
             }
@@ -173,15 +179,16 @@ impl Session {
 
         self.rate_limiter
             .acquire_and_execute(async move {
-                let response = builder.send().await?;
+                let response = builder.send().await.for_provider::<Self>()?;
 
                 if response.status().is_success() {
-                    let bytes = response.bytes().await?;
-                    serde_json::from_slice::<T>(&bytes).map_err(error::Error::from)
+                    let bytes = response.bytes().await.for_provider::<Self>()?;
+                    serde_json::from_slice::<T>(&bytes).for_provider::<Self>()
                 } else {
                     // This assumes that a failure will still return some sort of response text body;
                     // if the API returns an octat-stream or binary response, this will fail.
                     Err(error::Error::UnexpectedResponse {
+                        provider: Self::name(),
                         status: response.status(),
                         body: response.text().await.unwrap_or_else(|err| {
                             format!("Failed to read response body due to: {}", err)
@@ -222,7 +229,12 @@ mod tests {
     fn invalid_api_keys_are_rejected() {
         for api_key in ["", "has\nnewline"] {
             assert!(
-                matches!(Session::new(api_key), Err(error::Error::InvalidApiKey)),
+                matches!(
+                    Session::new(api_key),
+                    Err(error::Error::InvalidApiKey {
+                        provider: "geoapify"
+                    })
+                ),
                 "{api_key:?} should be rejected"
             );
         }
