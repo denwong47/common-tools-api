@@ -6,7 +6,9 @@
 //! - `provider-keycdn`: `providers::keycdn`, for KeyCDN's
 //!   [IP Location Finder API](https://tools.keycdn.com/geo#ip-location-finder-api).
 //! - `provider-geoapify`: `providers::geoapify`, for Geoapify's
-//!   [Reverse Geocoding API](https://apidocs.geoapify.com/docs/geocoding/reverse-geocoding/).
+//!   [Forward Geocoding](https://apidocs.geoapify.com/docs/geocoding/forward-geocoding/)
+//!   and [Reverse Geocoding](https://apidocs.geoapify.com/docs/geocoding/reverse-geocoding/)
+//!   APIs.
 //!
 //! Every provider has a `Session`, which rate limits its own requests to stay
 //! within that provider's limits. Shared types are in [`models`] and

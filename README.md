@@ -12,7 +12,7 @@ its own requests to stay within that provider's limits.
 | Provider | Feature             | APIs                                                                                  | Authentication         | Default rate limit |
 | -------- | ------------------- | ------------------------------------------------------------------------------------- | ---------------------- | ------------------ |
 | KeyCDN   | `provider-keycdn`   | [IP Location Finder](https://tools.keycdn.com/geo#ip-location-finder-api)             | Your site's URL        | 1 request / 350 ms |
-| Geoapify | `provider-geoapify` | [Reverse Geocoding](https://apidocs.geoapify.com/docs/geocoding/reverse-geocoding/)   | API key                | 5 requests / s     |
+| Geoapify | `provider-geoapify` | [Forward Geocoding](https://apidocs.geoapify.com/docs/geocoding/forward-geocoding/), [Reverse Geocoding](https://apidocs.geoapify.com/docs/geocoding/reverse-geocoding/) | API key | 5 requests / s |
 
 No provider is enabled by default.
 
@@ -68,6 +68,65 @@ region, city, postal code, continent, coordinates, time zone, ASN and ISP. The
 data comes from MaxMind GeoLite, so many addresses have no city or region.
 KeyCDN does not document which fields can be `null`, so every field apart from
 `host` and `ip` is an `Option`.
+
+### Geoapify: Forward Geocoding
+
+```rust
+use common_tools_api::providers::geoapify::{ForwardGeocodingQuery, Session};
+use common_tools_api::providers::geoapify::models::forward_geocoding::{
+    Bias, CountryCodes, Filter, LocationType, StructuredAddress,
+};
+use common_tools_api::providers::geoapify::models::geocoding::Coordinates;
+
+#[tokio::main]
+async fn main() -> common_tools_api::Result<()> {
+    let session = Session::new(std::env::var("GEOAPIFY_API_KEY").unwrap())?;
+
+    // A free-form address.
+    let query = ForwardGeocodingQuery::text("Leiper Weg 1, 03222 Lübbenau/Spreewald, Germany");
+    for place in session.forward_geocode(&query).await?.results {
+        println!("{:?} (confidence {:?})", place.formatted, place.rank.and_then(|r| r.confidence));
+    }
+
+    // A structured address: cities called Springfield in the US, nearest to
+    // a point first.
+    let query = ForwardGeocodingQuery::structured(StructuredAddress {
+        city: Some("Springfield".to_owned()),
+        ..Default::default()
+    })
+    .with_type(LocationType::City)
+    .with_filter(Filter::default().with_country_codes(CountryCodes::List(vec!["us".to_owned()])))
+    .with_bias(Bias::default().with_proximity(Coordinates { lon: -89.65, lat: 39.8 }));
+    for city in session.forward_geocode(&query).await?.results {
+        println!("{:?}, {:?}", city.city, city.state);
+    }
+
+    Ok(())
+}
+```
+
+A query searches either for free-form `text` or for a `StructuredAddress`
+(name, house number, street, postcode, city, state and country). Geoapify
+does not allow mixing the two, so `AddressQuery` is an enum.
+
+`with_filter` limits results to those matching *all* the filters set: a
+`circle`, a `rect`, `country_codes`, or a `place` (another result's
+`place_id`). `with_bias` ranks results matching *any* of the biases set
+first, without excluding the others: `proximity`, `circle`, `rect` or
+`country_codes`. Geoapify accepts one of each kind, so each kind is a single
+field on `Filter` and `Bias`. They are sent as one parameter separated by `|`,
+e.g. `filter=rect:...|countrycode:us`.
+
+If no country bias is set, Geoapify favours the country of the caller's IP
+address, which for a server is the server's country. Pass
+`Bias::default().with_country_codes(CountryCodes::Disabled)` to turn this off.
+
+`forward_geocode` returns a `ForwardGeocodingResponse`. Its `results` are the
+same `GeocodingResult`s as reverse geocoding (see below). For forward
+geocoding, `rank` also has `confidence` (overall, and at city, street and
+building level, each from 0 to 1) and `match_type`, and `distance` is measured
+from the `proximity` bias. `query` holds the request as Geoapify understood
+it, including `parsed`: the free-form text split into address parts.
 
 ### Geoapify: Reverse Geocoding
 
@@ -276,6 +335,11 @@ except for the following:
       `models/reverse_geocoding.rs`, based on Geoapify's documentation and
       OpenAPI spec. They were then adjusted by hand.
     - The Reverse Geocoding route in `api/reverse_geocoding.rs`.
+    - The Forward Geocoding models and route, in
+      `models/forward_geocoding.rs` and `api/forward_geocoding.rs`.
     - The changes to `session.rs` that send the API key in the `x-api-key`
       header and fix the base URL, and the session's unit tests.
+- **Errors**: the `provider` field on session errors, `Error::provider()`,
+  and the `for_provider` helper that replaces the `#[from]` conversions,
+  were added by an LLM.
 - This README was rewritten by an LLM for the multi-provider crate.

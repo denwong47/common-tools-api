@@ -31,6 +31,28 @@ pub struct GeocodingResponse<Q> {
     pub query: Option<Q>,
 }
 
+/// The `format` query parameter of the geocoding APIs. Only JSON is
+/// supported by this crate, since the models only match that format.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ResponseFormat {
+    #[default]
+    Json,
+}
+
+/// A coordinate pair in decimal degrees.
+///
+/// There is deliberately no `new`: Geoapify puts longitude first in some
+/// places (e.g. filters) and latitude first in others, so the fields are
+/// always named.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Coordinates {
+    /// Longitude, from -180 to 180.
+    pub lon: f64,
+    /// Latitude, from -90 to 90.
+    pub lat: f64,
+}
+
 /// A single place returned by a Geoapify geocoding API.
 ///
 /// Geoapify's schema marks every field as optional, and which address

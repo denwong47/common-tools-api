@@ -10,7 +10,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::geocoding::GeocodingResponse;
+use super::geocoding::{GeocodingResponse, ResponseFormat};
 use crate::traits::query::CanExportQuery;
 
 /// The full JSON response of the Reverse Geocoding API.
@@ -114,14 +114,6 @@ pub enum LocationType {
     Locality,
     /// Only documented in Geoapify's OpenAPI spec.
     Building,
-}
-
-/// The `format` query parameter. Only JSON is supported by this crate.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum ResponseFormat {
-    #[default]
-    Json,
 }
 
 /// The `query` object of a [`ReverseGeocodingResponse`]: the request as
