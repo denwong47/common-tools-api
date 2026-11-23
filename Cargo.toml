@@ -16,7 +16,7 @@ default = ["rustls"]
 rustls = ["reqwest/rustls"]
 native-tls = ["reqwest/native-tls"]
 provider-keycdn = ["dep-serde-with"]
-provider-geoapify = []
+provider-geoapify = ["dep-serde-with"]
 preserve-query-order = ["serde_json/preserve_order"]
 test-integration = []
 
